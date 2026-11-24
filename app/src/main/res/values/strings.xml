@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Trava Apps</string>
+    <string name="descricao_servico">O Trava Apps usa este serviço apenas para saber qual app foi aberto e mostrar a tela de bloqueio nos apps que você escolheu. Ele não lê nem guarda o conteúdo da tela.</string>
+    <string name="resumo_servico">Bloqueia os apps escolhidos com seu rosto ou PIN</string>
+</resources>
