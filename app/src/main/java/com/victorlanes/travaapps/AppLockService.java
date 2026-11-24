@@ -15,6 +15,7 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.InputMethodInfo;
 import android.view.inputmethod.InputMethodManager;
 
@@ -64,6 +65,7 @@ public class AppLockService extends AccessibilityService {
         if (e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || e.getPackageName() == null) return;
         String pkg = e.getPackageName().toString();
         if (ignorar.contains(pkg)) return;
+        geracao++; // cancela uma confirmação pendente de outro app
         long agora = System.currentTimeMillis();
         synchronized (liberados) {
             if (!pkg.equals(atual)) {
@@ -80,7 +82,49 @@ public class AppLockService extends AccessibilityService {
             }
             liberados.remove(pkg);
         }
-        bloquear(pkg);
+        // Só bloqueia se o app realmente abriu na frente. A tela de recentes (e algumas animações do
+        // launcher) mandam eventos com o nome do app sem que ele esteja aberto.
+        boolean atividade = ehAtividade(pkg, e.getClassName());
+        if (atividade) cobrir();
+        final long id = ++geracao;
+        MAIN.postDelayed(() -> confirmar(pkg, atividade, id), atividade ? 120 : 250);
+    }
+
+    private long geracao;
+
+    private void confirmar(String pkg, boolean atividade, long id) {
+        if (id != geracao) return; // outro app foi aberto nesse meio tempo
+        String ativo = null;
+        try {
+            AccessibilityNodeInfo raiz = getRootInActiveWindow();
+            if (raiz != null && raiz.getPackageName() != null) ativo = raiz.getPackageName().toString();
+        } catch (Exception ignored) {
+        }
+        boolean naFrente = ativo != null ? ativo.equals(pkg) : (atividade && pkg.equals(atual));
+        synchronized (liberados) {
+            Long l = liberados.get(pkg);
+            if (l != null && l == 0) naFrente = false; // já foi liberado
+        }
+        if (naFrente) bloquear(pkg);
+        else descobrir();
+    }
+
+    private final Map<String, Boolean> atividades = new HashMap<>();
+
+    /** o evento veio de uma tela (Activity) do app? (recentes e janelas flutuantes não são) */
+    private boolean ehAtividade(String pkg, CharSequence classe) {
+        if (classe == null) return false;
+        String k = pkg + "/" + classe;
+        Boolean r = atividades.get(k);
+        if (r != null) return r;
+        try {
+            getPackageManager().getActivityInfo(new ComponentName(pkg, classe.toString()), 0);
+            r = true;
+        } catch (Exception ex) {
+            r = false;
+        }
+        atividades.put(k, r);
+        return r;
     }
 
     private void bloquear(String pkg) {
